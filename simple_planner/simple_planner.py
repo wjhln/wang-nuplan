@@ -1,35 +1,36 @@
-from typing import Type
+from typing import Optional, List, Type
 from loguru import logger
 from nuplan.common.actor_state.ego_state import EgoState
-from nuplan.common.actor_state.state_representation import StateVector2D, TimePoint
-from nuplan.common.actor_state.vehicle_parameters import get_pacifica_parameters
 from nuplan.planning.simulation.controller.motion_model.kinematic_bicycle import KinematicBicycleModel
 from nuplan.planning.simulation.observation.observation_type import DetectionsTracks, Observation
 from nuplan.planning.simulation.planner.abstract_planner import AbstractPlanner, PlannerInitialization, PlannerInput
+from nuplan.common.maps.abstract_map import AbstractMap
 from nuplan.planning.simulation.trajectory.abstract_trajectory import AbstractTrajectory
 from nuplan.planning.simulation.trajectory.interpolated_trajectory import InterpolatedTrajectory
+from nuplan.common.actor_state.state_representation import TimePoint, StateVector2D
+from nuplan.common.actor_state.vehicle_parameters import get_pacifica_parameters
 
-class PDMOpenPlanner(AbstractPlanner):
+
+class SimplePlanner(AbstractPlanner):
     def __init__(self):
+        self.map_api: Optional[AbstractMap] = None
+        self._map_radius: int = 0
         self.count = 0
+        
+        # 获取Pacifica车辆参数
         self.vehicle = get_pacifica_parameters()
         self.model = KinematicBicycleModel(self.vehicle)
-    def name(self):
+
+    def name(self) -> str:
         return self.__class__.__name__
     
-    def initialize(self, initialization: PlannerInitialization) -> None:
+    def initialize(self, initialization: List[PlannerInitialization]) -> None:
         pass
 
     def observation_type(self) -> Type[Observation]:
         return DetectionsTracks
     
     def compute_planner_trajectory(self, current_input: PlannerInput) -> AbstractTrajectory:
-        logger.info(f"PDM Open Planner: {self.count}")
-
-        ego_state = current_input.history.ego_states[-1]
-
-
-        trajectory = []
         ego_state, _ = current_input.history.current_state
         self.count += 1
         trajectory = [ego_state]
@@ -44,4 +45,5 @@ class PDMOpenPlanner(AbstractPlanner):
         for i in range(1, 20):
             next_state = self.model.propagate_state(next_state, next_state.dynamic_car_state, TimePoint(int(0.25 * 1e6)))
             trajectory.append(next_state)
+        logger.info(f"计算规划轨迹完成，当前计数：{self.count}")
         return InterpolatedTrajectory(trajectory)
