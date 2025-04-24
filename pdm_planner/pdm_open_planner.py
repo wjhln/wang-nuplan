@@ -1,23 +1,38 @@
-from typing import Type
+from typing import Type, List, Optional
 from loguru import logger
 from nuplan.common.actor_state.ego_state import EgoState
-from nuplan.common.actor_state.state_representation import StateVector2D, TimePoint
+from nuplan.common.actor_state.state_representation import StateVector2D, TimePoint, StateSE2
 from nuplan.common.actor_state.vehicle_parameters import get_pacifica_parameters
+from nuplan.common.maps.abstract_map import AbstractMap
+from nuplan.common.maps.maps_datatypes import SemanticMapLayer
 from nuplan.planning.simulation.controller.motion_model.kinematic_bicycle import KinematicBicycleModel
 from nuplan.planning.simulation.observation.observation_type import DetectionsTracks, Observation
 from nuplan.planning.simulation.planner.abstract_planner import AbstractPlanner, PlannerInitialization, PlannerInput
 from nuplan.planning.simulation.trajectory.abstract_trajectory import AbstractTrajectory
 from nuplan.planning.simulation.trajectory.interpolated_trajectory import InterpolatedTrajectory
 
+
 class PDMOpenPlanner(AbstractPlanner):
-    def __init__(self):
+    def __init__(
+        self,
+        map_radius: float = 50.0,
+    ):
         self.count = 0
         self.vehicle = get_pacifica_parameters()
         self.model = KinematicBicycleModel(self.vehicle)
+        self.map_radius = map_radius
+
+        self.map_api: Optional[AbstractMap] = None
+        self.miss_goal: Optional[StateSE2] = None
+        self.route_roadblock_ids : List[str] = []
     def name(self):
         return self.__class__.__name__
     
     def initialize(self, initialization: PlannerInitialization) -> None:
+        self.map_api = initialization.map_api
+        self.miss_goal = initialization.mission_goal
+        self.route_roadblock_ids = initialization.route_roadblock_ids
+        logger.warning(f"miss_goal x:{self.miss_goal.x}, y:{self.miss_goal.y}")
         pass
 
     def observation_type(self) -> Type[Observation]:
@@ -26,10 +41,21 @@ class PDMOpenPlanner(AbstractPlanner):
     def compute_planner_trajectory(self, current_input: PlannerInput) -> AbstractTrajectory:
         logger.info(f"PDM Open Planner: {self.count}")
 
-        ego_state = current_input.history.ego_states[-1]
+        ego_state, _ = current_input.history.current_state
+        logger.info(f"ego_state x:{ego_state.rear_axle.x}, y:{ego_state.rear_axle.y}x")
+        layers = [SemanticMapLayer.ROADBLOCK, SemanticMapLayer.ROADBLOCK_CONNECTOR]
+        roadblock_dict = self.map_api.get_proximal_map_objects(ego_state.rear_axle.point, self.map_radius, layers)
+        roadblock_candidate = (roadblock_dict[SemanticMapLayer.ROADBLOCK] + roadblock_dict[SemanticMapLayer.ROADBLOCK_CONNECTOR])
+
+        for roadblock in roadblock_candidate:
+            for lane in roadblock.interior_edges:
+                nearest_state = lane.baseline_path.get_nearest_pose_from_position(ego_state.rear_axle.point)
+                dis = nearest_state.distance_to(ego_state.rear_axle)
+                heading_diff = nearest_state.heading - ego_state.rear_axle.heading
+                logger.info(f"roadblock: {roadblock.id}, dis: {dis}, heading_diff: {heading_diff}")
 
 
-        trajectory = []
+
         ego_state, _ = current_input.history.current_state
         self.count += 1
         trajectory = [ego_state]

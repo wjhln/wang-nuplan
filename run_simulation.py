@@ -12,9 +12,10 @@ cfg = hydra.compose(config_name='default_simulation', overrides=[
     'observation=idm_agents_observation',
     '+simulation=closed_loop_reactive_agents',
     'scenario_filter.limit_total_scenarios=1',
+    'worker=sequential'
 ])
 
 planner1 = PDMOpenPlanner()
-planner2 = SimplePlanner(horizon_seconds=10.0, sampling_time=0.25, acceleration=[0.2, 0.0], max_velocity = 2)
+planner2 = SimplePlanner(horizon_seconds=10.0, sampling_time=0.25, acceleration= [0.2, 0.0], max_velocity = 2)
 planner = [planner1]
 run_simulation(cfg, planner)
