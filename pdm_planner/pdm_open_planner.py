@@ -1,4 +1,5 @@
 from typing import Type, List, Optional
+import numpy as np
 from loguru import logger
 from nuplan.common.actor_state.ego_state import EgoState
 from nuplan.common.actor_state.state_representation import StateVector2D, TimePoint, StateSE2
@@ -47,12 +48,26 @@ class PDMOpenPlanner(AbstractPlanner):
         roadblock_dict = self.map_api.get_proximal_map_objects(ego_state.rear_axle.point, self.map_radius, layers)
         roadblock_candidate = (roadblock_dict[SemanticMapLayer.ROADBLOCK] + roadblock_dict[SemanticMapLayer.ROADBLOCK_CONNECTOR])
 
+        start_roadblock = None
+        current_lane = None
+        distance_diff_threshold = 3.0
+        heading_diff_threshold = np.pi / 4
+        distance_diff_thresh = np.inf
         for roadblock in roadblock_candidate:
             for lane in roadblock.interior_edges:
                 nearest_state = lane.baseline_path.get_nearest_pose_from_position(ego_state.rear_axle.point)
-                dis = nearest_state.distance_to(ego_state.rear_axle)
+                distance_diff = nearest_state.distance_to(ego_state.rear_axle)
                 heading_diff = nearest_state.heading - ego_state.rear_axle.heading
-                logger.info(f"roadblock: {roadblock.id}, dis: {dis}, heading_diff: {heading_diff}")
+                if abs(distance_diff) < distance_diff_threshold and abs(heading_diff) < heading_diff_threshold:
+                    if abs(distance_diff) < distance_diff_thresh:
+                        distance_diff_thresh = abs(distance_diff)
+                        start_roadblock = roadblock
+                        current_lane = lane
+
+        logger.info(f"roadblock: {start_roadblock.id}")
+
+        for state in current_lane.baseline_path.discrete_path:
+            logger.info(f"lane x: {state.x}  y: {state.y}  heading: {state.heading}")
 
 
 
