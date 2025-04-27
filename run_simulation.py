@@ -1,5 +1,5 @@
 import hydra
-from loguru import logger
+
 from nuplan.planning.script.run_simulation import run_simulation
 from nuplan.planning.simulation.planner.simple_planner import SimplePlanner
 from pdm_planner.pdm_open_planner import PDMOpenPlanner
@@ -11,7 +11,11 @@ cfg = hydra.compose(config_name='default_simulation', overrides=[
     'ego_controller=perfect_tracking_controller',
     'observation=idm_agents_observation',
     '+simulation=closed_loop_reactive_agents',
-    'scenario_filter.limit_total_scenarios=1',
+    'scenario_builder=nuplan_mini',
+    'scenario_filter=all_scenarios',
+    # 'scenario_filter.scenario_types=[starting_left_turn]',
+    # 'scenario_filter.limit_total_scenarios=1',
+    'scenario_filter.scenario_tokens=["c742dfbe4e4c5b60"]',
     'worker=sequential'
 ])
 
