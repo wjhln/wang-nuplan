@@ -1,3 +1,4 @@
+import os
 from typing import Type, List, Optional
 import numpy as np
 from loguru import logger
@@ -11,6 +12,7 @@ from nuplan.planning.simulation.observation.observation_type import DetectionsTr
 from nuplan.planning.simulation.planner.abstract_planner import AbstractPlanner, PlannerInitialization, PlannerInput
 from nuplan.planning.simulation.trajectory.abstract_trajectory import AbstractTrajectory
 from nuplan.planning.simulation.trajectory.interpolated_trajectory import InterpolatedTrajectory
+import matplotlib.pyplot as plt  # 添加导入matplotlib
 
 
 class PDMOpenPlanner(AbstractPlanner):
@@ -28,7 +30,7 @@ class PDMOpenPlanner(AbstractPlanner):
         self.route_roadblock_ids : List[str] = []
     def name(self):
         return self.__class__.__name__
-    
+
     def initialize(self, initialization: PlannerInitialization) -> None:
         self.map_api = initialization.map_api
         self.miss_goal = initialization.mission_goal
@@ -38,7 +40,7 @@ class PDMOpenPlanner(AbstractPlanner):
 
     def observation_type(self) -> Type[Observation]:
         return DetectionsTracks
-    
+
     def compute_planner_trajectory(self, current_input: PlannerInput) -> AbstractTrajectory:
         logger.info(f"PDM Open Planner: {self.count}")
 
@@ -69,7 +71,25 @@ class PDMOpenPlanner(AbstractPlanner):
         for state in current_lane.baseline_path.discrete_path:
             logger.info(f"lane x: {state.x}  y: {state.y}  heading: {state.heading}")
 
+        # 绘制车道线轨迹点和Ego位置
+        lane_x = [state.x for state in current_lane.baseline_path.discrete_path]
+        lane_y = [state.y for state in current_lane.baseline_path.discrete_path]
+        ego_x = ego_state.rear_axle.x
+        ego_y = ego_state.rear_axle.y
 
+        plt.figure(figsize=(10, 6))
+        plt.plot(lane_x, lane_y, label="Lane Trajectory", color="blue", marker="o", linestyle="-")
+        plt.scatter(ego_x, ego_y, label="Ego Position", color="red", s=100, zorder=5)
+        plt.title("Lane Trajectory and Ego Position")
+        plt.xlabel("X")
+        plt.ylabel("Y")
+        plt.legend()
+        plt.grid(True)
+
+        # 保存图片
+        file_path = os.path.join('debug', f'lane_and_ego_position_{self.count}.png')
+        plt.savefig(file_path)
+        plt.close()
 
         ego_state, _ = current_input.history.current_state
         self.count += 1
@@ -86,3 +106,4 @@ class PDMOpenPlanner(AbstractPlanner):
             next_state = self.model.propagate_state(next_state, next_state.dynamic_car_state, TimePoint(int(0.25 * 1e6)))
             trajectory.append(next_state)
         return InterpolatedTrajectory(trajectory)
+
