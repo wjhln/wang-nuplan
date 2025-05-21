@@ -2,7 +2,7 @@ import hydra
 
 from nuplan.planning.script.run_simulation import run_simulation
 from nuplan.planning.simulation.planner.simple_planner import SimplePlanner
-from pdm_planner.pdm_open_planner import PDMOpenPlanner
+from pdm_open_planner.simulation.pdm_open_planner import PDMOpenPlanner
 
 hydra.core.global_hydra.GlobalHydra.instance().clear()
 hydra.initialize(config_path='nuplan/planning/script/config/simulation')
