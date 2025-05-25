@@ -8,8 +8,13 @@ from pdm_open_planner.feature.pdm_feature import PDMFeature
 
 
 class PDMOpenModel(TorchModuleWrapper):
-    def __init__(self):
-        trajectory_sampling = TrajectorySampling(num_poses=16, time_horizon=0.5)
+    def __init__(
+            self,
+            trajectory_sampling : TrajectorySampling(num_poses=16, interval_length=0.5),
+            history_sampling : TrajectorySampling(num_poses=10, interval_length=0.2)
+
+                 
+                 ):
         feature_builders = [PDMOpenFeatureBuilder()]
         target_builders = [PDMOpenTargetBuilder()]
         super().__init__(

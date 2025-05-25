@@ -1,4 +1,4 @@
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 import torch
 from nuplan.planning.training.preprocessing.features.abstract_model_feature import (

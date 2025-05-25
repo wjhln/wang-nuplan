@@ -44,8 +44,11 @@ class PDMOpenPlanner(AbstractPlanner):
     def compute_planner_trajectory(self, current_input: PlannerInput) -> AbstractTrajectory:
         logger.info(f"PDM Open Planner: {self.count}")
 
+        # 提取ego当前状态
         ego_state, _ = current_input.history.current_state
         logger.info(f"ego_state x:{ego_state.rear_axle.x}, y:{ego_state.rear_axle.y}x")
+
+        # 提取当前车道中心线
         layers = [SemanticMapLayer.ROADBLOCK, SemanticMapLayer.ROADBLOCK_CONNECTOR]
         roadblock_dict = self.map_api.get_proximal_map_objects(ego_state.rear_axle.point, self.map_radius, layers)
         roadblock_candidate = (roadblock_dict[SemanticMapLayer.ROADBLOCK] + roadblock_dict[SemanticMapLayer.ROADBLOCK_CONNECTOR])
@@ -68,8 +71,10 @@ class PDMOpenPlanner(AbstractPlanner):
 
         logger.info(f"roadblock: {start_roadblock.id}")
 
-        for state in current_lane.baseline_path.discrete_path:
-            logger.info(f"lane x: {state.x}  y: {state.y}  heading: {state.heading}")
+
+
+        # for state in current_lane.baseline_path.discrete_path:
+        #     logger.info(f"lane x: {state.x}  y: {state.y}  heading: {state.heading}")
 
         # 绘制车道线轨迹点和Ego位置
         lane_x = [state.x for state in current_lane.baseline_path.discrete_path]
@@ -77,19 +82,19 @@ class PDMOpenPlanner(AbstractPlanner):
         ego_x = ego_state.rear_axle.x
         ego_y = ego_state.rear_axle.y
 
-        plt.figure(figsize=(10, 6))
-        plt.plot(lane_x, lane_y, label="Lane Trajectory", color="blue", marker="o", linestyle="-")
-        plt.scatter(ego_x, ego_y, label="Ego Position", color="red", s=100, zorder=5)
-        plt.title("Lane Trajectory and Ego Position")
-        plt.xlabel("X")
-        plt.ylabel("Y")
-        plt.legend()
-        plt.grid(True)
+        # plt.figure(figsize=(10, 6))
+        # plt.plot(lane_x, lane_y, label="Lane Trajectory", color="blue", marker="o", linestyle="-")
+        # plt.scatter(ego_x, ego_y, label="Ego Position", color="red", s=100, zorder=5)
+        # plt.title("Lane Trajectory and Ego Position")
+        # plt.xlabel("X")
+        # plt.ylabel("Y")
+        # plt.legend()
+        # plt.grid(True)
 
-        # 保存图片
-        file_path = os.path.join('debug', f'lane_and_ego_position_{self.count}.png')
-        plt.savefig(file_path)
-        plt.close()
+        # # 保存图片
+        # file_path = os.path.join('debug', f'lane_and_ego_position_{self.count}.png')
+        # plt.savefig(file_path)
+        # plt.close()
 
         ego_state, _ = current_input.history.current_state
         self.count += 1
