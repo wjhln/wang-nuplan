@@ -5,7 +5,7 @@ from nuplan.planning.simulation.planner.simple_planner import SimplePlanner
 from pdm_open_planner.simulation.pdm_open_planner import PDMOpenPlanner
 
 hydra.core.global_hydra.GlobalHydra.instance().clear()
-hydra.initialize(config_path='nuplan/planning/script/config/simulation')
+hydra.initialize(config_path='config')
 cfg = hydra.compose(config_name='default_simulation', overrides=[
     'output_dir=./exp/closed_loop_reactive_agents',
     'ego_controller=perfect_tracking_controller',
