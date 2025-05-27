@@ -69,24 +69,30 @@ class PDMOpenPlanner(AbstractPlanner):
         ego_state = current_input.history.ego_states[-1]
         logger.info(f"ego_state x:{ego_state.rear_axle.x}, y:{ego_state.rear_axle.y}x")
 
+        self._drivable_area_map = get_drivable_area_map(
+            self._map_api, ego_state, self._map_radius
+        )
 
-        start_roadblock = None
-        current_lane = None
-        distance_diff_threshold = 3.0
-        heading_diff_threshold = np.pi / 4
-        distance_diff_thresh = np.inf
-        for roadblock in roadblock_candidate:
-            for lane in roadblock.interior_edges:
-                nearest_state = lane.baseline_path.get_nearest_pose_from_position(ego_state.rear_axle.point)
-                distance_diff = nearest_state.distance_to(ego_state.rear_axle)
-                heading_diff = nearest_state.heading - ego_state.rear_axle.heading
-                if abs(distance_diff) < distance_diff_threshold and abs(heading_diff) < heading_diff_threshold:
-                    if abs(distance_diff) < distance_diff_thresh:
-                        distance_diff_thresh = abs(distance_diff)
-                        start_roadblock = roadblock
-                        current_lane = lane
+        current_lane = self._get_starting_lane(ego_state)
+        self._centerline = PDMPath(self._get_discrete_centerline(current_lane))
 
-        logger.info(f"roadblock: {start_roadblock.id}")
+        # start_roadblock = None
+        # current_lane = None
+        # distance_diff_threshold = 3.0
+        # heading_diff_threshold = np.pi / 4
+        # distance_diff_thresh = np.inf
+        # for roadblock in roadblock_candidate:
+        #     for lane in roadblock.interior_edges:
+        #         nearest_state = lane.baseline_path.get_nearest_pose_from_position(ego_state.rear_axle.point)
+        #         distance_diff = nearest_state.distance_to(ego_state.rear_axle)
+        #         heading_diff = nearest_state.heading - ego_state.rear_axle.heading
+        #         if abs(distance_diff) < distance_diff_threshold and abs(heading_diff) < heading_diff_threshold:
+        #             if abs(distance_diff) < distance_diff_thresh:
+        #                 distance_diff_thresh = abs(distance_diff)
+        #                 start_roadblock = roadblock
+        #                 current_lane = lane
+        #
+        # logger.info(f"roadblock: {start_roadblock.id}")
 
         # for state in current_lane.baseline_path.discrete_path:
         #     logger.info(f"lane x: {state.x}  y: {state.y}  heading: {state.heading}")
