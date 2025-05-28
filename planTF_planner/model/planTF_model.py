@@ -35,5 +35,5 @@ class PlanTFModel(TorchModuleWrapper):
 
     def forward(self, features: FeaturesType) -> TargetsType:
         logger.warning("aaaaaaaaaaaaaaaaa")
-        self.pos_embedding(features)
-        return PlanTFFeature()
+        # self.pos_embedding(features)
+        pass
