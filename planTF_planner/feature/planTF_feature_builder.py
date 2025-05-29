@@ -17,7 +17,7 @@ from nuplan.common.actor_state.tracked_objects import TrackedObjects
 from nuplan.common.maps.maps_datatypes import SemanticMapLayer, TrafficLightStatusData
 from nuplan.common.actor_state.ego_state import EgoState
 from nuplan.common.maps.abstract_map import AbstractMap
-from nuplan.common.actor_state.state_representation import StateSE2
+from nuplan.common.actor_state.state_representation import StateSE2, Point2D
 from nuplan.planning.script.run_simulation import logger
 from planTF_planner.feature.planTF_feature import PlanTFFeature
 from planTF_planner.feature.common.route_utils import route_roadblock_correction
@@ -91,12 +91,12 @@ class PlanTFFeatureBuilder(AbstractFeatureBuilder):
             time_horizon=self.future_horizon,
             num_samples=self.future_samples,
         )
-        ego_states = (
+        ego_state_times = (
             list(past_ego_trajectory) + [cur_ego_state] + list(future_ego_trajectory)
         )
         # other agent
         cur_tracked_objects = scenario.initial_tracked_objects.tracked_objects
-        past_tracked_objects = [
+        past_tracked_objects_times = [
             tracked_objects.tracked_objects
             for tracked_objects in scenario.get_past_tracked_objects(
                 iteration=0,
@@ -104,7 +104,7 @@ class PlanTFFeatureBuilder(AbstractFeatureBuilder):
                 num_samples=self.history_samples,
             )
         ]
-        future_tracked_objects = [
+        future_tracked_objects_times = [
             tracked_objects.tracked_objects
             for tracked_objects in scenario.get_future_tracked_objects(
                 iteration=0,
@@ -112,39 +112,41 @@ class PlanTFFeatureBuilder(AbstractFeatureBuilder):
                 num_samples=self.history_samples,
             )
         ]
-        tracked_objects = (
-            past_tracked_objects + [cur_tracked_objects] + future_tracked_objects
+        tracked_objects_times = (
+            past_tracked_objects_times
+            + [cur_tracked_objects]
+            + future_tracked_objects_times
         )
 
         route_roadblocks_ids = scenario.get_route_roadblock_ids()
         map_api = scenario.map_api
         misson_goal = scenario.get_mission_goal()
-        if misson_goal is None:
-            raise ValueError("mission_goal is None!")
-        traffic_light_status = list(scenario.get_traffic_light_status_at_iteration(0))
+        traffic_light_status_list = list(
+            scenario.get_traffic_light_status_at_iteration(0)
+        )
 
         return self._build_feature(
-            present_idx=self.history_samples,
-            ego_states=ego_states,
-            tracked_objects=tracked_objects,
+            cur_idx=self.history_samples,
+            ego_state_times=ego_state_times,
+            tracked_objects_times=tracked_objects_times,
             route_roadblocks_ids=route_roadblocks_ids,
             map_api=map_api,
-            mission_goal=misson_goal,
-            traffic_light_status=traffic_light_status,
+            mission_goal=misson_goal,  # type: ignore
+            traffic_light_status_list=traffic_light_status_list,
         )
 
     def _build_feature(
         self,
-        present_idx: int,
-        ego_states: List[EgoState],
-        tracked_objects: List[TrackedObjects],
+        cur_idx: int,
+        ego_state_times: List[EgoState],
+        tracked_objects_times: List[TrackedObjects],
         route_roadblocks_ids: List[str],
         map_api: AbstractMap,
         mission_goal: StateSE2,
-        traffic_light_status: List[TrafficLightStatusData],
+        traffic_light_status_list: List[TrafficLightStatusData],
     ):
-        current_state = ego_states[present_idx]
-        ego_point = current_state.center
+        current_state = ego_state_times[cur_idx]
+        query_xy = current_state.center
 
         route_roadblocks_ids = route_roadblock_correction(
             current_state, map_api, route_roadblocks_ids
@@ -152,9 +154,12 @@ class PlanTFFeatureBuilder(AbstractFeatureBuilder):
 
         data = {}
         data["current_state"] = self._get_ego_current_state(
-            ego_states[present_idx], ego_states[present_idx - 1]
+            ego_state_times[cur_idx], ego_state_times[cur_idx - 1]
         )
-        ego_feature = self._get_ego_features(ego_states)
+        ego_feature = self._get_ego_features(ego_state_times)
+        agents_feature = self._get_agent_feature(
+            query_xy, cur_idx, tracked_objects_times
+        )
         return PlanTFFeature()
 
     def _get_ego_current_state(self, cur_state: EgoState, pre_state: EgoState):
@@ -172,7 +177,7 @@ class PlanTFFeatureBuilder(AbstractFeatureBuilder):
             yaw_rate = np.clip(yaw_rate, -0.95, 0.95)
 
         state = np.zeros(7, dtype=np.float64)
-        state[0, 2] = cur_state.rear_axle.array
+        state[0:2] = cur_state.rear_axle.array
         state[2] = cur_state.rear_axle.heading
         state[3] = cur_state.dynamic_car_state.rear_axle_velocity_2d.x
         state[4] = cur_state.dynamic_car_state.rear_axle_acceleration_2d.x
@@ -180,33 +185,83 @@ class PlanTFFeatureBuilder(AbstractFeatureBuilder):
         state[6] = yaw_rate
         return state
 
-    def _get_ego_features(self, ego_states: List[EgoState]):
-        features = {}
-        features["position"] = np.array([state.rear_axle.array for state in ego_states])
-        features["heading"] = np.array(
-            [state.rear_axle.heading for state in ego_states]
-        )
-        features["velocity"] = np.array(
-            [
-                rotate_round_z_axis(
-                    state.dynamic_car_state.rear_axle_velocity_2d.array,
-                    -state.rear_axle.heading,
-                )
-                for state in ego_states
-            ]
-        )
-        features["acceleration"] = np.array(
-            [
-                rotate_round_z_axis(
-                    state.dynamic_car_state._rear_axle_acceleration_2d.array,
-                    -state.rear_axle.heading,
-                )
-                for state in ego_states
-            ]
-        )
-        features["shape"] = np.tile([self.width, self.length], (len(ego_states), 1))
-        features["category"] = self.interested_objects_types.index(
+    def _get_ego_features(self, ego_state_times: List[EgoState]):
+        T = len(ego_state_times)
+        ego_features = {
+            "position": np.zeros((T, 2), dtype=np.float64),
+            "heading": np.zeros(T, dtype=np.float64),
+            "velocity": np.zeros((T, 2), dtype=np.float64),
+            "acceleration": np.zeros((T, 2), dtype=np.float64),
+            "shape": np.zeros((T, 2), dtype=np.float64),
+            "category": np.array(-1, dtype=np.int8),
+            "valid_mask": np.ones(T, dtype=np.bool8),
+        }
+        for t, state in enumerate(ego_state_times):
+            ego_features["position"][t] = state.rear_axle.array
+            ego_features["heading"][t] = state.rear_axle.heading
+            ego_features["velocity"][t] = rotate_round_z_axis(
+                state.dynamic_car_state.rear_axle_velocity_2d.array,
+                -state.rear_axle.heading,
+            )
+            ego_features["acceleration"][t] = rotate_round_z_axis(
+                state.dynamic_car_state.rear_axle_acceleration_2d.array,
+                -state.rear_axle.heading,
+            )
+        ego_features["shape"][:] = [self.width, self.length]
+        ego_features["category"][...] = self.interested_objects_types.index(
             TrackedObjectType.EGO
         )
-        features["valid_mask"] = np.ones(len(ego_states), dtype=np.bool8)
-        return features
+        return ego_features
+
+    def _get_agent_feature(
+        self,
+        query_xy: Point2D,
+        cur_idx: int,
+        tracked_objects_times: List[TrackedObjects],
+    ):
+        cur_tracked_objects = tracked_objects_times[cur_idx]
+        cur_agents = cur_tracked_objects.get_tracked_objects_of_types(
+            self.interested_objects_types
+        )
+        # agents_features
+        N, T = min(len(cur_agents), self.max_agents), len(tracked_objects_times)
+        agents_features = {
+            "position": np.zeros((N, T, 2), dtype=np.float64),
+            "heading": np.zeros((N, T), dtype=np.float64),
+            "velocity": np.zeros((N, T, 2), dtype=np.float64),
+            "shape": np.zeros((N, T, 2), dtype=np.float64),
+            "category": np.array((N,), dtype=np.int8),
+            "valid_mask": np.zeros((N, T), dtype=np.bool8),
+        }
+        # agents_features
+        if N == 0:
+            return agents_features
+
+        agents_pose = np.array([agent.center.array for agent in cur_agents])
+        distance = np.linalg.norm(agents_pose - query_xy.array[None, :], axis=1)
+        agents_track_tokens = np.array([agent.track_token for agent in cur_agents])
+
+        agents_track_tokens = agents_track_tokens[
+            np.argsort(distance)[: self.max_agents]
+        ]  # 过滤掉距离远的，剩余的顺序不变
+        agents_track_dict = {
+            track_tokens: idx for idx, track_tokens in enumerate(agents_track_tokens)
+        }
+
+        for t, tracked_objects in enumerate(tracked_objects_times):
+            for agent in tracked_objects.get_tracked_objects_of_types(
+                self.interested_objects_types
+            ):
+                if agent.track_token not in agents_track_tokens:
+                    continue
+                idx = agents_track_dict[agent.track_token]
+                agents_features["position"][idx, t] = agent.center.array
+                agents_features["heading"][idx, t] = agent.center.heading
+                agents_features["velocity"][idx, t] = agent.velocity.array
+                agents_features["shape"][idx, t] = [agent.box.width, agent.box.length]
+                agents_features["valid_mask"][idx, t] = True
+                if t == cur_idx:
+                    agents_features["category"][idx] = (
+                        self.interested_objects_types.index(agent.tracked_object_type)
+                    )
+        return agents_features
