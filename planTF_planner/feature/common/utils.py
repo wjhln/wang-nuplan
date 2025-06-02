@@ -1,7 +1,7 @@
-from typing import Union
+from typing import List, Union
 import numba
 import numpy as np
-
+from nuplan.common.actor_state.state_representation import StateSE2
 
 def normalize_angle(angle: Union[float, np.ndarray]) -> Union[float, np.ndarray]:
     return (angle + np.pi) % (2 * np.pi) - np.pi
@@ -56,3 +56,7 @@ def interpolate_polyline(points: np.ndarray, t: int) -> np.ndarray:
     points_interp: np.ndarray = anchors + offsets
 
     return points_interp
+
+def sample_discrete_path(discrete_path: List[StateSE2], num_points: int):
+    path = np.stack([point.array for point in discrete_path], axis=0)
+    return interpolate_polyline(path, num_points)
