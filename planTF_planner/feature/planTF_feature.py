@@ -120,7 +120,7 @@ class PlanTFFeature(AbstractModelFeature):
                 (point_position[:, 0, :, 0] < x_max)
                 & (point_position[:, 0, :, 0] > x_min)
                 & (point_position[:, 0, :, 1] < y_max)
-                & (point_position[:, 0, :1] > y_min)
+                & (point_position[:, 0, :, 1] > y_min)
             )  # [M, P]
             data["map"]["valid_mask"] = valid_mask
             valid_polygon = valid_mask.any(-1)  # [M]

@@ -135,8 +135,8 @@ class PlanTFFeatureBuilder(AbstractFeatureBuilder):
             tracked_objects.tracked_objects
             for tracked_objects in scenario.get_future_tracked_objects(
                 iteration=0,
-                time_horizon=self.history_horizon,
-                num_samples=self.history_samples,
+                time_horizon=self.future_horizon,
+                num_samples=self.future_samples,
             )
         ]
         tracked_objects_times = (
@@ -188,16 +188,16 @@ class PlanTFFeatureBuilder(AbstractFeatureBuilder):
             query_xy, cur_idx, tracked_objects_list
         )
         feature["agent"] = {}
-        for k in agents_feature:
+        for k in agents_feature.keys():
             feature["agent"][k] = np.concatenate(
-                [ego_feature[k][None:...], agents_feature[k]], axis=0
+                [ego_feature[k][None, ...], agents_feature[k]], axis=0
             )
         feature["map"] = self._get_map_feature(
             map_api,
             query_xy,
             route_roadblocks_ids,
             traffic_light_status_list,
-            self.radiuss,
+            self.radius,
         )
         return PlanTFFeature(feature)
 
@@ -232,7 +232,7 @@ class PlanTFFeatureBuilder(AbstractFeatureBuilder):
             "velocity": np.zeros((T, 2), dtype=np.float64),
             "acceleration": np.zeros((T, 2), dtype=np.float64),
             "shape": np.zeros((T, 2), dtype=np.float64),
-            "category": np.array(-1, dtype=np.int8),
+            "category": np.full(1, -1, dtype=np.int8),
             "valid_mask": np.ones(T, dtype=np.bool8),
         }
         for t, state in enumerate(ego_state_times):
@@ -269,7 +269,7 @@ class PlanTFFeatureBuilder(AbstractFeatureBuilder):
             "heading": np.zeros((N, T), dtype=np.float64),
             "velocity": np.zeros((N, T, 2), dtype=np.float64),
             "shape": np.zeros((N, T, 2), dtype=np.float64),
-            "category": np.array((N,), dtype=np.int8),
+            "category": np.zeros((N,), dtype=np.int8),
             "valid_mask": np.zeros((N, T), dtype=np.bool8),
         }
         # agents_features
@@ -303,6 +303,7 @@ class PlanTFFeatureBuilder(AbstractFeatureBuilder):
                     agents_features["category"][idx] = (
                         self.interested_objects_types.index(agent.tracked_object_type)
                     )
+
         return agents_features
 
     def _get_map_feature(
@@ -318,17 +319,18 @@ class PlanTFFeatureBuilder(AbstractFeatureBuilder):
         map_objects = map_api.get_proximal_map_objects(
             query_xy, radius, self.polygon_types
         )
-        lane_objects = map_objects[SemanticMapLayer.LANE] + [
-            SemanticMapLayer.LANE_CONNECTOR
-        ]
+        lane_objects = (
+            map_objects[SemanticMapLayer.LANE]
+            + map_objects[SemanticMapLayer.LANE_CONNECTOR]
+        )
         crosswalk_objects = map_objects[SemanticMapLayer.CROSSWALK]
 
         object_ids = [int(obj.id) for obj in lane_objects + crosswalk_objects]
         object_types = (
             [SemanticMapLayer.LANE] * len(map_objects[SemanticMapLayer.LANE])
             + [SemanticMapLayer.LANE_CONNECTOR]
-            * len(map_objects[SemanticMapLayer.LANE])
-            + [SemanticMapLayer.LANE] * len(map_objects[SemanticMapLayer.LANE])
+            * len(map_objects[SemanticMapLayer.LANE_CONNECTOR])
+            + [SemanticMapLayer.CROSSWALK] * len(crosswalk_objects)
         )
 
         M, P = len(lane_objects) + len(crosswalk_objects), sample_points
@@ -337,7 +339,7 @@ class PlanTFFeatureBuilder(AbstractFeatureBuilder):
             "point_vector": np.zeros((M, 3, P, 2), dtype=np.float64),
             "point_orientation": np.zeros((M, 3, P), dtype=np.float64),
             "point_side": np.zeros((M, 3), dtype=np.int8),
-            "polygon_centor": np.zeros((M, 3), dtype=np.float64),
+            "polygon_center": np.zeros((M, 3), dtype=np.float64),
             "polygon_position": np.zeros((M, 2), dtype=np.float64),
             "polygon_orientation": np.zeros(M, dtype=np.float64),
             "polygon_type": np.zeros(M, dtype=np.int8),
@@ -369,7 +371,7 @@ class PlanTFFeatureBuilder(AbstractFeatureBuilder):
             )
             map_feature["point_side"][idx] = np.arange(3)
 
-            map_feature["polygon_centor"][idx] = np.concatenate(
+            map_feature["polygon_center"][idx] = np.concatenate(
                 [
                     center_line[int(sample_points / 2)],
                     [map_feature["point_orientation"][idx, 0, int(sample_points / 2)]],
@@ -416,11 +418,12 @@ class PlanTFFeatureBuilder(AbstractFeatureBuilder):
             )
             map_feature["point_side"][idx] = np.arange(3)
 
-            map_feature["polygon_centor"][idx] = np.concatenate(
+            map_feature["polygon_center"][idx] = np.concatenate(
                 [
                     edges[0, int(sample_points / 2)],
-                    [map_feature["point_orientation"][idx, 0, sample_points / 2]],
-                ]
+                    [map_feature["point_orientation"][idx, 0, int(sample_points / 2)]],
+                ],
+                axis=-1,
             )
             map_feature["polygon_position"][idx] = edges[0, 0]
             map_feature["polygon_orientation"][idx] = map_feature["point_orientation"][
